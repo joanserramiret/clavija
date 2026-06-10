@@ -1,5 +1,5 @@
 /* Clavija — service worker: funciona offline tras la primera visita */
-const CACHE = "clavija-v1";
+const CACHE = "clavija-v2";
 const ASSETS = [
   "./",
   "index.html",

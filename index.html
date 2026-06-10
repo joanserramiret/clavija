@@ -232,14 +232,21 @@ function buildGauge() {
 }
 buildGauge();
 const needle = document.getElementById("needle");
-let needleAngle = 0;
+let needleAngle = 0, needleTarget = 0, needleInTune = false;
 
 function setNeedle(cents, inTune) {
-  const target = Math.max(-50, Math.min(50, cents)) * 0.9;
-  needleAngle += (target - needleAngle) * 0.35; // suavizado
-  needle.setAttribute("transform", `rotate(${needleAngle.toFixed(2)} ${CX} ${CY})`);
-  needle.firstElementChild.setAttribute("stroke", inTune ? "#3fb950" : "#e6edf3");
+  needleTarget = Math.max(-50, Math.min(50, cents)) * 0.9;
+  needleInTune = inTune;
 }
+
+// animación continua e independiente: la aguja siempre se mueve con suavidad
+function animateNeedle() {
+  requestAnimationFrame(animateNeedle);
+  needleAngle += (needleTarget - needleAngle) * 0.09;
+  needle.setAttribute("transform", `rotate(${needleAngle.toFixed(2)} ${CX} ${CY})`);
+  needle.firstElementChild.setAttribute("stroke", needleInTune ? "#3fb950" : "#e6edf3");
+}
+animateNeedle();
 
 /* ---------- UI ---------- */
 const noteNameEl = document.getElementById("noteName");
@@ -303,7 +310,7 @@ function autoCorrelate(buffer, sampleRate) {
   let rms = 0;
   for (let i = 0; i < SIZE; i++) rms += buffer[i] * buffer[i];
   rms = Math.sqrt(rms / SIZE);
-  if (rms < 0.008) return -1; // demasiado silencio
+  if (rms < 0.005) return -1; // demasiado silencio
 
   // recorte de bordes silenciosos
   let r1 = 0, r2 = SIZE - 1;
@@ -360,8 +367,8 @@ function loop() {
   }
 
   pitchHistory.push(f);
-  if (pitchHistory.length > 7) pitchHistory.shift();
-  if (pitchHistory.length < 3) return;
+  if (pitchHistory.length > 5) pitchHistory.shift();
+  if (pitchHistory.length < 2) return;
   const freq = median(pitchHistory);
   lastDisplayTime = now;
 
