@@ -242,7 +242,7 @@ function setNeedle(cents, inTune) {
 // animación continua e independiente: la aguja siempre se mueve con suavidad
 function animateNeedle() {
   requestAnimationFrame(animateNeedle);
-  needleAngle += (needleTarget - needleAngle) * 0.09;
+  needleAngle += (needleTarget - needleAngle) * 0.15;
   needle.setAttribute("transform", `rotate(${needleAngle.toFixed(2)} ${CX} ${CY})`);
   needle.firstElementChild.setAttribute("stroke", needleInTune ? "#3fb950" : "#e6edf3");
 }
@@ -304,38 +304,38 @@ function showSilence() {
   if (mode !== "auto") updateStringButtons(-1);
 }
 
-/* ---------- Detección de tono (autocorrelación) ---------- */
+/* ---------- Detección de tono (autocorrelación optimizada) ---------- */
 function autoCorrelate(buffer, sampleRate) {
   const SIZE = buffer.length;
   let rms = 0;
   for (let i = 0; i < SIZE; i++) rms += buffer[i] * buffer[i];
   rms = Math.sqrt(rms / SIZE);
-  if (rms < 0.005) return -1; // demasiado silencio
+  if (rms < 0.003) return -1; // demasiado silencio
 
-  // recorte de bordes silenciosos
-  let r1 = 0, r2 = SIZE - 1;
-  const thres = 0.2;
-  for (let i = 0; i < SIZE / 2; i++) if (Math.abs(buffer[i]) < thres) { r1 = i; break; }
-  for (let i = 1; i < SIZE / 2; i++) if (Math.abs(buffer[SIZE - i]) < thres) { r2 = SIZE - i; break; }
-  const buf2 = buffer.slice(r1, r2);
-  const N = buf2.length;
-  if (N < 256) return -1;
-
-  const c = new Float32Array(N);
-  for (let lag = 0; lag < N; lag++) {
+  // solo calculamos los retardos del rango útil (28–1500 Hz): mucho más rápido
+  const MINLAG = Math.floor(sampleRate / 1500);
+  const MAXLAG = Math.min(SIZE - 2, Math.ceil(sampleRate / 27));
+  const c = new Float32Array(MAXLAG + 1);
+  for (let lag = MINLAG; lag <= MAXLAG; lag++) {
     let sum = 0;
-    for (let i = 0; i < N - lag; i++) sum += buf2[i] * buf2[i + lag];
-    c[lag] = sum;
+    for (let i = 0; i < SIZE - lag; i++) sum += buffer[i] * buffer[i + lag];
+    c[lag] = sum / (SIZE - lag); // normaliza para no favorecer retardos cortos
   }
-
-  let d = 0;
-  while (d < N - 1 && c[d] > c[d + 1]) d++;
+  // salta el lóbulo inicial (correlación alta cerca de retardo cero)
+  let d = MINLAG;
+  while (d < MAXLAG && c[d] > c[d + 1]) d++;
   let maxval = -1, maxpos = -1;
-  for (let i = d; i < N; i++) {
-    if (c[i] > maxval) { maxval = c[i]; maxpos = i; }
+  for (let lag = d; lag <= MAXLAG; lag++) {
+    if (c[lag] > maxval) { maxval = c[lag]; maxpos = lag; }
   }
-  if (maxpos <= 0) return -1;
-  let T0 = maxpos;
+  if (maxpos <= 0 || maxval <= 0) return -1;
+  // el período real es el PRIMER pico fuerte, no el máximo global (evita múltiplos)
+  let T0 = -1;
+  const thresh = 0.9 * maxval;
+  for (let lag = d + 1; lag < MAXLAG; lag++) {
+    if (c[lag] >= thresh && c[lag] >= c[lag - 1] && c[lag] >= c[lag + 1]) { T0 = lag; break; }
+  }
+  if (T0 < 0) T0 = maxpos;
 
   // interpolación parabólica
   const x1 = c[T0 - 1] || 0, x2 = c[T0], x3 = c[T0 + 1] || 0;
@@ -367,9 +367,8 @@ function loop() {
   }
 
   pitchHistory.push(f);
-  if (pitchHistory.length > 5) pitchHistory.shift();
-  if (pitchHistory.length < 2) return;
-  const freq = median(pitchHistory);
+  if (pitchHistory.length > 3) pitchHistory.shift();
+  const freq = median(pitchHistory); // responde desde la primera muestra
   lastDisplayTime = now;
 
   let targetMidi, nearIdx = -1;
@@ -420,7 +419,7 @@ document.getElementById("startBtn").addEventListener("click", async () => {
     });
     const src = audioCtx.createMediaStreamSource(stream);
     analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 8192; // suficiente para B0 del bajo de 5 cuerdas (30.87 Hz)
+    analyser.fftSize = 8192; // precisión <3 cents en todo el rango (B0 a E4)
     src.connect(analyser);
     buf = new Float32Array(analyser.fftSize);
     document.getElementById("overlay").style.display = "none";
