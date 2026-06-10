@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0d1117">
+<meta name="description" content="Clavija: afina tu guitarra y tu bajo en segundos, desde el navegador. Cromático, guitarra, bajo de 4 y 5 cuerdas.">
+<title>Clavija · Afinador de guitarra y bajo</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Clavija">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0d1117;
+    color: #e6edf3;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    user-select: none;
+    overflow: hidden;
+  }
+  header {
+    width: 100%;
+    max-width: 480px;
+    padding: 14px 16px 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  header .brand { display: flex; align-items: center; gap: 8px; }
+  header .brand img { width: 26px; height: 26px; border-radius: 6px; }
+  header h1 { font-size: 17px; font-weight: 700; letter-spacing: .5px; }
+  .a4 {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 13px; color: #8b949e;
+  }
+  .a4 button {
+    width: 26px; height: 26px; border-radius: 50%;
+    border: 1px solid #30363d; background: #161b22; color: #e6edf3;
+    font-size: 15px; line-height: 1; cursor: pointer;
+  }
+  .tabs {
+    display: flex; gap: 8px;
+    width: 100%; max-width: 480px;
+    padding: 8px 16px;
+  }
+  .tabs button {
+    flex: 1; padding: 10px 0;
+    border-radius: 10px; border: 1px solid #30363d;
+    background: #161b22; color: #8b949e;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: all .15s;
+  }
+  .tabs button.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+
+  .display {
+    width: 100%; max-width: 480px;
+    flex: 1;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 0 16px;
+    position: relative;
+  }
+  .note-name {
+    font-size: 96px; font-weight: 800; line-height: 1;
+    letter-spacing: -2px;
+    transition: color .12s;
+  }
+  .note-octave { font-size: 28px; font-weight: 400; color: #8b949e; }
+  .note-solfa { font-size: 20px; color: #8b949e; margin-top: 4px; min-height: 26px; }
+  .freq { font-size: 15px; color: #8b949e; margin-top: 6px; min-height: 20px; font-variant-numeric: tabular-nums; }
+  .cents-label {
+    font-size: 17px; font-weight: 600; margin-top: 4px; min-height: 24px;
+    font-variant-numeric: tabular-nums;
+  }
+  svg.gauge { width: 100%; max-width: 380px; margin-top: 8px; }
+
+  .strings {
+    display: flex; gap: 8px;
+    width: 100%; max-width: 480px;
+    padding: 10px 16px;
+    justify-content: center;
+  }
+  .strings button {
+    flex: 1; max-width: 64px;
+    padding: 12px 0;
+    border-radius: 12px; border: 1px solid #30363d;
+    background: #161b22; color: #e6edf3;
+    font-size: 16px; font-weight: 700; cursor: pointer;
+    transition: all .15s;
+  }
+  .strings button small { display: block; font-size: 10px; font-weight: 400; color: #8b949e; margin-top: 2px; }
+  .strings button.near { border-color: #1f6feb; color: #58a6ff; }
+  .strings button.locked { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+  .strings button.locked small { color: #c9d8f0; }
+  .strings button.intune { background: #238636; border-color: #238636; color: #fff; }
+  .strings.hidden { visibility: hidden; }
+
+  .start-overlay {
+    position: fixed; inset: 0;
+    background: rgba(13,17,23,.96);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 18px; z-index: 10;
+    padding: 24px; text-align: center;
+  }
+  .start-overlay img { width: 96px; height: 96px; border-radius: 22px; }
+  .start-overlay h1 { font-size: 30px; letter-spacing: .5px; }
+  .start-overlay p { color: #8b949e; font-size: 15px; max-width: 300px; }
+  .start-overlay button {
+    padding: 16px 48px;
+    border-radius: 999px; border: none;
+    background: #1f6feb; color: #fff;
+    font-size: 18px; font-weight: 700; cursor: pointer;
+  }
+  .start-overlay .err { color: #f85149; }
+  footer { padding: 8px 0 14px; font-size: 12px; color: #484f58; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><img src="icon-192.png" alt=""><h1>Clavija</h1></div>
+  <div class="a4">
+    <button id="a4down">−</button>
+    <span>A4 = <b id="a4val">440</b> Hz</span>
+    <button id="a4up">+</button>
+  </div>
+</header>
+
+<div class="tabs">
+  <button data-mode="auto" class="active">Cromático</button>
+  <button data-mode="guitar">Guitarra</button>
+  <button data-mode="bass">Bajo</button>
+  <button data-mode="bass5">Bajo 5</button>
+</div>
+
+<div class="display">
+  <div>
+    <span class="note-name" id="noteName">–</span><span class="note-octave" id="noteOct"></span>
+  </div>
+  <div class="note-solfa" id="noteSolfa"></div>
+  <svg class="gauge" viewBox="0 0 300 150" id="gauge"></svg>
+  <div class="cents-label" id="centsLabel">&nbsp;</div>
+  <div class="freq" id="freqLabel">&nbsp;</div>
+</div>
+
+<div class="strings hidden" id="strings"></div>
+
+<footer>Toca una cuerda para fijarla · vuelve a tocarla para soltar</footer>
+
+<div class="start-overlay" id="overlay">
+  <img src="icon-192.png" alt="Clavija">
+  <h1>Clavija</h1>
+  <p>Afina tu guitarra y tu bajo en segundos. Necesita acceso al micrófono para escuchar tu instrumento.</p>
+  <button id="startBtn">Empezar</button>
+  <p class="err" id="errMsg"></p>
+</div>
+
+<script>
+"use strict";
+
+/* ---------- Configuración ---------- */
+const LETTERS = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+const SOLFA   = ["Do","Do#","Re","Re#","Mi","Fa","Fa#","Sol","Sol#","La","La#","Si"];
+const IN_TUNE_CENTS = 5;
+
+const INSTRUMENTS = {
+  guitar: [ // midi: E2 A2 D3 G3 B3 E4
+    {midi:40,label:"E"},{midi:45,label:"A"},{midi:50,label:"D"},
+    {midi:55,label:"G"},{midi:59,label:"B"},{midi:64,label:"E"}
+  ],
+  bass: [ // E1 A1 D2 G2
+    {midi:28,label:"E"},{midi:33,label:"A"},{midi:38,label:"D"},{midi:43,label:"G"}
+  ],
+  bass5: [ // B0 E1 A1 D2 G2
+    {midi:23,label:"B"},{midi:28,label:"E"},{midi:33,label:"A"},{midi:38,label:"D"},{midi:43,label:"G"}
+  ]
+};
+
+let a4 = 440;
+let mode = "auto";        // auto | guitar | bass | bass5
+let lockedString = null;  // índice de cuerda fijada o null
+let audioCtx = null, analyser = null, buf = null;
+let pitchHistory = [];
+let lastDisplayTime = 0;
+
+const midiToFreq = m => a4 * Math.pow(2, (m - 69) / 12);
+const freqToMidi = f => 12 * (Math.log(f / a4) / Math.LN2) + 69;
+
+/* ---------- Gauge SVG ---------- */
+const gauge = document.getElementById("gauge");
+const CX = 150, CY = 140, R = 120;
+
+function pt(angleDeg, r) {
+  // ángulo 0 = arriba; negativo izquierda, positivo derecha
+  const a = angleDeg * Math.PI / 180;
+  return [CX + r * Math.sin(a), CY - r * Math.cos(a)];
+}
+
+function buildGauge() {
+  let s = "";
+  // ticks cada 10 cents de -50 a +50 -> -45° a +45°
+  for (let c = -50; c <= 50; c += 10) {
+    const ang = c * 0.9;
+    const big = (c === 0);
+    const [x1,y1] = pt(ang, R);
+    const [x2,y2] = pt(ang, R - (big ? 18 : 10));
+    s += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
+          stroke="${big ? "#58a6ff" : "#30363d"}" stroke-width="${big ? 3 : 2}" stroke-linecap="round"/>`;
+    if (c % 20 === 0) {
+      const [tx,ty] = pt(ang, R - 30);
+      s += `<text x="${tx}" y="${ty}" fill="#8b949e" font-size="11" text-anchor="middle">${c > 0 ? "+" + c : c}</text>`;
+    }
+  }
+  // zona verde ±5 cents
+  const [gx1,gy1] = pt(-4.5, R + 6);
+  const [gx2,gy2] = pt(4.5, R + 6);
+  s += `<path d="M ${gx1} ${gy1} A ${R+6} ${R+6} 0 0 1 ${gx2} ${gy2}" stroke="#238636" stroke-width="5" fill="none" stroke-linecap="round"/>`;
+  // aguja
+  s += `<g id="needle" transform="rotate(0 ${CX} ${CY})">
+          <line x1="${CX}" y1="${CY}" x2="${CX}" y2="${CY - R + 24}" stroke="#e6edf3" stroke-width="3.5" stroke-linecap="round"/>
+        </g>
+        <circle cx="${CX}" cy="${CY}" r="7" fill="#e6edf3"/>`;
+  gauge.innerHTML = s;
+}
+buildGauge();
+const needle = document.getElementById("needle");
+let needleAngle = 0;
+
+function setNeedle(cents, inTune) {
+  const target = Math.max(-50, Math.min(50, cents)) * 0.9;
+  needleAngle += (target - needleAngle) * 0.35; // suavizado
+  needle.setAttribute("transform", `rotate(${needleAngle.toFixed(2)} ${CX} ${CY})`);
+  needle.firstElementChild.setAttribute("stroke", inTune ? "#3fb950" : "#e6edf3");
+}
+
+/* ---------- UI ---------- */
+const noteNameEl = document.getElementById("noteName");
+const noteOctEl  = document.getElementById("noteOct");
+const noteSolfaEl= document.getElementById("noteSolfa");
+const centsEl    = document.getElementById("centsLabel");
+const freqEl     = document.getElementById("freqLabel");
+const stringsEl  = document.getElementById("strings");
+
+document.querySelectorAll(".tabs button").forEach(b => {
+  b.addEventListener("click", () => {
+    document.querySelectorAll(".tabs button").forEach(x => x.classList.remove("active"));
+    b.classList.add("active");
+    mode = b.dataset.mode;
+    lockedString = null;
+    renderStrings();
+  });
+});
+
+document.getElementById("a4up").addEventListener("click", () => { a4 = Math.min(450, a4 + 1); document.getElementById("a4val").textContent = a4; });
+document.getElementById("a4down").addEventListener("click", () => { a4 = Math.max(430, a4 - 1); document.getElementById("a4val").textContent = a4; });
+
+function renderStrings() {
+  if (mode === "auto") { stringsEl.classList.add("hidden"); stringsEl.innerHTML = ""; return; }
+  stringsEl.classList.remove("hidden");
+  stringsEl.innerHTML = "";
+  INSTRUMENTS[mode].forEach((s, i) => {
+    const btn = document.createElement("button");
+    const oct = Math.floor(s.midi / 12) - 1;
+    btn.innerHTML = `${s.label}<small>${LETTERS[s.midi % 12]}${oct}</small>`;
+    btn.addEventListener("click", () => {
+      lockedString = (lockedString === i) ? null : i;
+      updateStringButtons(-1);
+    });
+    stringsEl.appendChild(btn);
+  });
+}
+
+function updateStringButtons(nearIdx, inTuneIdx = -1) {
+  [...stringsEl.children].forEach((btn, i) => {
+    btn.classList.toggle("locked", lockedString === i);
+    btn.classList.toggle("near", lockedString === null && i === nearIdx);
+    btn.classList.toggle("intune", i === inTuneIdx);
+  });
+}
+
+function showSilence() {
+  noteNameEl.textContent = "–";
+  noteNameEl.style.color = "#e6edf3";
+  noteOctEl.textContent = "";
+  noteSolfaEl.textContent = "";
+  centsEl.innerHTML = "&nbsp;";
+  freqEl.innerHTML = "&nbsp;";
+  setNeedle(0, false);
+  if (mode !== "auto") updateStringButtons(-1);
+}
+
+/* ---------- Detección de tono (autocorrelación) ---------- */
+function autoCorrelate(buffer, sampleRate) {
+  const SIZE = buffer.length;
+  let rms = 0;
+  for (let i = 0; i < SIZE; i++) rms += buffer[i] * buffer[i];
+  rms = Math.sqrt(rms / SIZE);
+  if (rms < 0.008) return -1; // demasiado silencio
+
+  // recorte de bordes silenciosos
+  let r1 = 0, r2 = SIZE - 1;
+  const thres = 0.2;
+  for (let i = 0; i < SIZE / 2; i++) if (Math.abs(buffer[i]) < thres) { r1 = i; break; }
+  for (let i = 1; i < SIZE / 2; i++) if (Math.abs(buffer[SIZE - i]) < thres) { r2 = SIZE - i; break; }
+  const buf2 = buffer.slice(r1, r2);
+  const N = buf2.length;
+  if (N < 256) return -1;
+
+  const c = new Float32Array(N);
+  for (let lag = 0; lag < N; lag++) {
+    let sum = 0;
+    for (let i = 0; i < N - lag; i++) sum += buf2[i] * buf2[i + lag];
+    c[lag] = sum;
+  }
+
+  let d = 0;
+  while (d < N - 1 && c[d] > c[d + 1]) d++;
+  let maxval = -1, maxpos = -1;
+  for (let i = d; i < N; i++) {
+    if (c[i] > maxval) { maxval = c[i]; maxpos = i; }
+  }
+  if (maxpos <= 0) return -1;
+  let T0 = maxpos;
+
+  // interpolación parabólica
+  const x1 = c[T0 - 1] || 0, x2 = c[T0], x3 = c[T0 + 1] || 0;
+  const a = (x1 + x3 - 2 * x2) / 2;
+  const b = (x3 - x1) / 2;
+  if (a) T0 = T0 - b / (2 * a);
+
+  const freq = sampleRate / T0;
+  if (freq < 28 || freq > 1500) return -1; // B0 del bajo de 5 = 30.87 Hz
+  return freq;
+}
+
+function median(arr) {
+  const s = [...arr].sort((a, b) => a - b);
+  return s[Math.floor(s.length / 2)];
+}
+
+/* ---------- Bucle principal ---------- */
+function loop() {
+  requestAnimationFrame(loop);
+  analyser.getFloatTimeDomainData(buf);
+  const f = autoCorrelate(buf, audioCtx.sampleRate);
+  const now = performance.now();
+
+  if (f === -1) {
+    pitchHistory = [];
+    if (now - lastDisplayTime > 700) showSilence();
+    return;
+  }
+
+  pitchHistory.push(f);
+  if (pitchHistory.length > 7) pitchHistory.shift();
+  if (pitchHistory.length < 3) return;
+  const freq = median(pitchHistory);
+  lastDisplayTime = now;
+
+  let targetMidi, nearIdx = -1;
+  if (mode === "auto") {
+    targetMidi = Math.round(freqToMidi(freq));
+  } else {
+    const strs = INSTRUMENTS[mode];
+    if (lockedString !== null) {
+      nearIdx = lockedString;
+    } else {
+      let best = Infinity;
+      strs.forEach((s, i) => {
+        const d = Math.abs(Math.log(freq / midiToFreq(s.midi)));
+        if (d < best) { best = d; nearIdx = i; }
+      });
+    }
+    targetMidi = strs[nearIdx].midi;
+  }
+
+  const targetFreq = midiToFreq(targetMidi);
+  const cents = 1200 * Math.log(freq / targetFreq) / Math.LN2;
+  const inTune = Math.abs(cents) <= IN_TUNE_CENTS;
+
+  const letter = LETTERS[((targetMidi % 12) + 12) % 12];
+  const oct = Math.floor(targetMidi / 12) - 1;
+  noteNameEl.textContent = letter;
+  noteNameEl.style.color = inTune ? "#3fb950" : (Math.abs(cents) <= 15 ? "#d29922" : "#e6edf3");
+  noteOctEl.textContent = oct;
+  noteSolfaEl.textContent = SOLFA[((targetMidi % 12) + 12) % 12];
+  freqEl.textContent = freq.toFixed(1) + " Hz";
+  const cr = Math.round(cents);
+  centsEl.textContent = inTune ? "✓ Afinada" : (cr > 0 ? `+${cr} cents (agudo)` : `${cr} cents (grave)`);
+  centsEl.style.color = inTune ? "#3fb950" : "#8b949e";
+  setNeedle(cents, inTune);
+  if (mode !== "auto") updateStringButtons(nearIdx, inTune ? nearIdx : -1);
+}
+
+/* ---------- Arranque ---------- */
+document.getElementById("startBtn").addEventListener("click", async () => {
+  const errEl = document.getElementById("errMsg");
+  errEl.textContent = "";
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    audioCtx = new AC();
+    await audioCtx.resume();
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    });
+    const src = audioCtx.createMediaStreamSource(stream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 8192; // suficiente para B0 del bajo de 5 cuerdas (30.87 Hz)
+    src.connect(analyser);
+    buf = new Float32Array(analyser.fftSize);
+    document.getElementById("overlay").style.display = "none";
+    loop();
+  } catch (e) {
+    if (location.protocol === "file:" || (location.protocol === "http:" && !["localhost","127.0.0.1"].includes(location.hostname))) {
+      errEl.textContent = "El micrófono requiere HTTPS (o localhost). Sube la app a un hosting con HTTPS.";
+    } else if (e.name === "NotAllowedError") {
+      errEl.textContent = "Permiso de micrófono denegado. Actívalo en los ajustes del navegador.";
+    } else {
+      errEl.textContent = "Error: " + e.message;
+    }
+  }
+});
+
+// evitar que la pantalla se apague (si el navegador lo soporta)
+if ("wakeLock" in navigator) {
+  document.addEventListener("visibilitychange", async () => {
+    if (document.visibilityState === "visible" && audioCtx) {
+      try { await navigator.wakeLock.request("screen"); } catch (e) {}
+    }
+  });
+  document.getElementById("startBtn").addEventListener("click", async () => {
+    try { await navigator.wakeLock.request("screen"); } catch (e) {}
+  });
+}
+
+// PWA: service worker para funcionar offline
+if ("serviceWorker" in navigator && location.protocol === "https:") {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
